@@ -13,13 +13,12 @@
         scope.BackupPlayerTypes = [
             'embed',//Source
             'popout',//Source
-            'autoplay',//Emergency fallback (low res, only used when embed+popout both have ads)
         ];
         scope.FallbackPlayerType = 'embed';
         scope.ForceAccessTokenPlayerType = 'popout';
         scope.SkipPlayerReloadOnHevc = false;// If true this will skip player reload on streams which have 2k/4k quality (if you enable this and you use the 2k/4k quality setting you'll get error #4000 / #3000 / spinning wheel on chrome based browsers)
         scope.AlwaysReloadPlayerOnAd = false;// Always pause/play when entering/leaving ads
-        scope.ReloadPlayerAfterAd = true;// After the ad finishes do a player reload instead of pause/play
+        scope.ReloadPlayerAfterAd = false;// Pause/play is smoother than reload (reload restarts ABR from low quality)
         scope.PlayerReloadMinimalRequestsTime = 1500;
         scope.PlayerReloadMinimalRequestsPlayerIndex = 0;
         scope.HasTriggeredPlayerReload = false;
@@ -45,6 +44,7 @@
         scope.AllSegmentsAreAdSegments = false;
     }
     let isActivelyStrippingAds = false;
+    let isBlockingAds = false;
     let localStorageHookFailed = false;
     const twitchWorkers = [];
     const workerStringConflicts = [
@@ -758,7 +758,7 @@
                 const state = playerForMonitoringBuffering.state;
                 if (!player.core) {
                     playerForMonitoringBuffering = null;
-                } else if (state.props?.content?.type === 'live' && !player.isPaused() && !player.getHTMLVideoElement()?.ended && playerBufferState.lastFixTime <= Date.now() - PlayerBufferingMinRepeatDelay && !isActivelyStrippingAds) {
+                } else if (state.props?.content?.type === 'live' && !player.isPaused() && !player.getHTMLVideoElement()?.ended && playerBufferState.lastFixTime <= Date.now() - PlayerBufferingMinRepeatDelay && !isBlockingAds) {
                     const m3u8Url = player.core?.state?.path;
                     if (m3u8Url) {
                       const fileName = new URL(m3u8Url).pathname.split('/').pop();
@@ -836,6 +836,7 @@
             window.postMessage({ source: 'twitchadsblocker-ad-blocked' }, '*');
         }
         _lastBannerAdState = !!data.hasAds;
+        isBlockingAds = !!data.hasAds;
         const playerRootDiv = document.querySelector('.video-player');
         if (playerRootDiv != null) {
             let adBlockDiv = null;
