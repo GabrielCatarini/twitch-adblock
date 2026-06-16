@@ -349,7 +349,11 @@
                                             streamInfo.ModifiedM3U8 = lines.join('\n');
                                         }
                                     }
-                                    preWarmBackupStreams(streamInfo, realFetch);
+                                    await Promise.race([
+                                        preWarmBackupStreams(streamInfo, realFetch),
+                                        new Promise(function(r) { setTimeout(r, 2500); })
+                                    ]);
+                                    console.log('[VAFT-diag] Pre-warm gate passed | cache: ' + BackupPlayerTypes.map(function(t) { return t + ':' + !!streamInfo.BackupEncodingsM3U8Cache[t]; }).join(', '));
                                     streamInfo._preWarmInterval = setInterval(function() {
                                         for (let pi = 0; pi < BackupPlayerTypes.length; pi++) {
                                             streamInfo.BackupEncodingsM3U8Cache[BackupPlayerTypes[pi]] = null;
@@ -522,22 +526,8 @@
                 });
             }
             const hasWarmCache = BackupPlayerTypes.some(function(t) { return !!streamInfo.BackupEncodingsM3U8Cache[t]; });
-            if (!streamInfo.IsMidroll && !hasWarmCache && !streamInfo._prerollReloadDone && Date.now() - streamInfo.LastPlayerReload > PlayerReloadMinimalRequestsTime) {
-                console.log('[VAFT-diag] Preroll with empty backup cache — reloading player to skip');
-                streamInfo._prerollReloadDone = true;
-                streamInfo.IsShowingAd = false;
-                streamInfo.LastPlayerReload = Date.now();
-                postMessage({ key: 'ReloadPlayer' });
-                if (IsAdStrippingEnabled) {
-                    textStr = stripAdSegments(textStr, false, streamInfo);
-                }
-                postMessage({
-                    key: 'UpdateAdBlockBanner',
-                    isMidroll: false,
-                    hasAds: false,
-                    isStrippingAdSegments: false
-                });
-                return textStr;
+            if (!hasWarmCache) {
+                console.log('[VAFT-diag] WARNING: Ad detected with empty backup cache — backup loop will fetch on-demand');
             }
             let backupPlayerType = null;
             let backupM3u8 = null;
