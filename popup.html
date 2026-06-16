@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Twitch Ads Blocker</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <header class="header">
+        <svg class="logo" viewBox="0 0 24 24" width="22" height="22" fill="none">
+          <path d="M4 2L2 7v13h5v2h3l2-2h4l5-5V2H4zm15 11l-3 3h-4l-2 2v-2H6V4h13v9z" fill="currentColor"/>
+          <path d="M15 7h-2v5h2V7zm-4 0h-2v5h2V7z" fill="currentColor"/>
+        </svg>
+        <div class="header-text">
+          <h1>Twitch Ads Blocker</h1>
+          <span id="engineVersion" class="version">Engine: loading...</span>
+        </div>
+      </header>
+
+      <section class="controls">
+        <label class="toggle-row" for="enabledToggle">
+          <div class="toggle-label">
+            <span class="toggle-title">Ad Blocking</span>
+            <span id="stateText" class="toggle-subtitle"></span>
+          </div>
+          <div class="toggle-track">
+            <input id="enabledToggle" type="checkbox" />
+            <span class="toggle-thumb"></span>
+          </div>
+        </label>
+
+        <label class="toggle-row" for="watchdogToggle">
+          <div class="toggle-label">
+            <span class="toggle-title">Watchdog Recovery</span>
+            <span id="watchdogText" class="toggle-subtitle"></span>
+          </div>
+          <div class="toggle-track">
+            <input id="watchdogToggle" type="checkbox" />
+            <span class="toggle-thumb"></span>
+          </div>
+        </label>
+      </section>
+
+      <section class="info-card">
+        <p id="conflictText" class="info-line">Conflict check: waiting for Twitch tab data...</p>
+      </section>
+
+      <button id="reloadBtn" type="button">
+        <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M1.5 1.5v4.5h4.5"/>
+          <path d="M2.3 10a6 6 0 1 0 .9-5.5L1.5 6"/>
+        </svg>
+        Reload Twitch Tab
+      </button>
+    </main>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
