@@ -293,7 +293,8 @@
                                         ActiveBackupPlayerType: null,
                                         IsMidroll: false,
                                         IsStrippingAdSegments: false,
-                                        NumStrippedAdSegments: 0
+                                        NumStrippedAdSegments: 0,
+                                        _hasRealContent: false
                                     };
                                     const lines = encodingsM3u8.replaceAll('\r', '').split('\n');
                                     for (let i = 0; i < lines.length - 1; i++) {
@@ -340,11 +341,7 @@
                                             streamInfo.ModifiedM3U8 = lines.join('\n');
                                         }
                                     }
-                                    await Promise.race([
-                                        preWarmBackupStreams(streamInfo, realFetch),
-                                        new Promise(function(r) { setTimeout(r, 2500); })
-                                    ]);
-                                    console.log('[VAFT-diag] Pre-warm gate passed | cache: ' + BackupPlayerTypes.map(function(t) { return t + ':' + !!streamInfo.BackupEncodingsM3U8Cache[t]; }).join(', '));
+                                    preWarmBackupStreams(streamInfo, realFetch);
                                     streamInfo._preWarmInterval = setInterval(function() {
                                         for (let pi = 0; pi < BackupPlayerTypes.length; pi++) {
                                             streamInfo.BackupEncodingsM3U8Cache[BackupPlayerTypes[pi]] = null;
@@ -478,6 +475,13 @@
         const haveAdTags = textStr.includes(AdSignifier) || SimulatedAdsDepth > 0;
         if (haveAdTags) {
             streamInfo.IsMidroll = textStr.includes('"MIDROLL"') || textStr.includes('"midroll"');
+            if (!streamInfo._hasRealContent && !streamInfo.IsMidroll) {
+                if (!streamInfo._prerollLogged) {
+                    streamInfo._prerollLogged = true;
+                    console.log('[VAFT-diag] Preroll on fresh stream — passing through natively (midrolls will be blocked)');
+                }
+                return textStr;
+            }
             if (!streamInfo.IsShowingAd) {
                 streamInfo.IsShowingAd = true;
                 console.log('[VAFT-diag] Ad detected (' + (streamInfo.IsMidroll ? 'midroll' : 'preroll') + ') on ' + streamInfo.ChannelName + ' | backup cache: ' + BackupPlayerTypes.map(function(t) { return t + ':' + !!streamInfo.BackupEncodingsM3U8Cache[t]; }).join(', '));
@@ -613,22 +617,28 @@
             if (IsAdStrippingEnabled || stripHevc) {
                 textStr = stripAdSegments(textStr, stripHevc, streamInfo);
             }
-        } else if (streamInfo.IsShowingAd) {
-            console.log('Finished blocking ads');
-            streamInfo.IsShowingAd = false;
-            streamInfo.IsStrippingAdSegments = false;
-            streamInfo.NumStrippedAdSegments = 0;
-            streamInfo.ActiveBackupPlayerType = null;
-            if (streamInfo.IsUsingModifiedM3U8 || ReloadPlayerAfterAd) {
-                streamInfo.IsUsingModifiedM3U8 = false;
-                streamInfo.LastPlayerReload = Date.now();
-                postMessage({
-                    key: 'ReloadPlayer'
-                });
-            } else {
-                postMessage({
-                    key: 'PauseResumePlayer'
-                });
+        } else {
+            if (!streamInfo._hasRealContent) {
+                streamInfo._hasRealContent = true;
+                console.log('[VAFT-diag] Real content detected on ' + streamInfo.ChannelName + ' — midroll blocking now active');
+            }
+            if (streamInfo.IsShowingAd) {
+                console.log('Finished blocking ads');
+                streamInfo.IsShowingAd = false;
+                streamInfo.IsStrippingAdSegments = false;
+                streamInfo.NumStrippedAdSegments = 0;
+                streamInfo.ActiveBackupPlayerType = null;
+                if (streamInfo.IsUsingModifiedM3U8 || ReloadPlayerAfterAd) {
+                    streamInfo.IsUsingModifiedM3U8 = false;
+                    streamInfo.LastPlayerReload = Date.now();
+                    postMessage({
+                        key: 'ReloadPlayer'
+                    });
+                } else {
+                    postMessage({
+                        key: 'PauseResumePlayer'
+                    });
+                }
             }
         }
         postMessage({
