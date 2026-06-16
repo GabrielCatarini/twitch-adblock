@@ -5,8 +5,8 @@
 <h1 align="center">Twitch Ads Blocker</h1>
 
 <p align="center">
-  Extensão para Chrome e Firefox (Manifest V3) que bloqueia propagandas na Twitch<br/>
-  usando o motor <strong>VAFT</strong> (Video Ad-Free Twitch) com melhorias de performance e qualidade.
+  Chrome &amp; Firefox extension (Manifest V3) that blocks Twitch ads<br/>
+  using the <strong>VAFT</strong> (Video Ad-Free Twitch) engine with performance and quality improvements.
 </p>
 
 <p align="center">
@@ -18,71 +18,71 @@
 
 ---
 
-## Como funciona
+## How It Works
 
-A Twitch entrega streams ao vivo via **HLS** (HTTP Live Streaming). O player pede uma playlist M3U8 a cada poucos segundos contendo URLs de segmentos de video. Quando rola propaganda, a Twitch injeta segmentos de ad direto nessa playlist, marcados com a tag `stitched`.
+Twitch delivers live streams via **HLS** (HTTP Live Streaming). The player requests an M3U8 playlist every few seconds containing video segment URLs. When an ad plays, Twitch injects ad segments directly into that playlist, tagged with the `stitched` marker.
 
-A extensão intercepta esse fluxo em múltiplas camadas:
+This extension intercepts the stream at multiple layers:
 
-### 1. Interceptação do Worker
+### 1. Worker Interception
 
-A Twitch roda o player dentro de um Web Worker. A extensão substitui o constructor `Worker` antes de qualquer script da Twitch carregar, injetando o motor VAFT dentro do blob do worker. Isso permite interceptar todos os requests de playlist e segmentos de dentro do thread de media.
+Twitch runs its player inside a Web Worker. The extension replaces the `Worker` constructor before any Twitch scripts load, injecting the VAFT engine into the worker blob. This allows intercepting all playlist and segment requests from within the media thread.
 
-### 2. Backup Stream (bloqueio principal)
+### 2. Backup Stream (Primary Block)
 
-Quando ads aparecem na playlist, a extensão pede **access tokens alternativos** usando player types diferentes (`embed`, `popout`). A Twitch trata esses tipos como sessões separadas e frequentemente retorna um stream limpo, sem propagandas, em **resolução original**.
+When ads appear in the playlist, the extension requests **alternative access tokens** using different player types (`embed`, `popout`). Twitch treats these as separate sessions and frequently returns a clean, ad-free stream at **full source resolution**.
 
-### 3. Pre-warming de Backup
+### 3. Backup Pre-warming
 
-Os streams alternativos são pré-carregados em background assim que o stream principal inicia, e renovados a cada 90 segundos. Quando um ad aparece, a troca pro stream limpo é instantanea porque os tokens e playlists ja estão prontos no cache.
+Alternative streams are pre-fetched in the background as soon as the main stream starts, and refreshed every 90 seconds. When an ad hits, the switch to the clean stream is instant because tokens and playlists are already cached.
 
-### 4. Looping de Segmento Real
+### 4. Real Segment Looping
 
-Se nenhum stream alternativo estiver disponível sem ads, a extensão faz **ad stripping** — remove os segmentos de propaganda da playlist e os substitui pelo último segmento real de video. O viewer vê a última cena "congelada" em resolução total, em vez de uma tela preta.
+If no ad-free alternative stream is available, the extension performs **ad stripping** — it removes ad segments from the playlist and replaces them with the last real video segment. The viewer sees the last scene "frozen" at full resolution instead of a black screen.
 
 ### 5. Watchdog Recovery
 
-Um monitor independente observa o `<video>` da página a cada 2 segundos. Se o `currentTime` parar de progredir por 15 segundos, tenta recuperar com pause/play. Se travar de novo, recarrega a tab. Reseta automaticamente ao trocar de canal.
+An independent monitor checks the page's `<video>` element every 2 seconds. If `currentTime` stops progressing for 15 seconds, it attempts recovery via pause/play. If it stalls again, the tab is reloaded. Automatically resets when switching channels.
 
-### 6. Detecção de Conflito
+### 6. Conflict Detection
 
-Ao carregar uma tab da Twitch, a extensão verifica se outro adblocker (userscript, uBlock filter, outra extensão VAFT) já está ativo, evitando conflitos que quebram o player.
+When a Twitch tab loads, the extension checks whether another ad blocker (userscript, uBlock filter, another VAFT instance) is already active, preventing conflicts that break the player.
 
 ---
 
-## Instalação
+## Installation
 
 ### Chrome / Edge / Brave
 
-1. Baixe ou clone este repositório
-2. Acesse `chrome://extensions`
-3. Ative o **Modo do desenvolvedor** (canto superior direito)
-4. Clique em **Carregar sem compactação**
-5. Selecione a pasta do projeto
+1. Download or clone this repository
+2. Go to `chrome://extensions`
+3. Enable **Developer mode** (top-right corner)
+4. Click **Load unpacked**
+5. Select the project folder
 
 ### Firefox
 
-1. Baixe ou clone este repositório
-2. Acesse `about:debugging#/runtime/this-firefox`
-3. Clique em **Carregar extensão temporária**
-4. Selecione o arquivo `manifest.json` dentro da pasta do projeto
+1. Download or clone this repository
+2. Go to `about:debugging#/runtime/this-firefox`
+3. Click **Load Temporary Add-on**
+4. Select the `manifest.json` file inside the project folder
 
 ---
 
-## Estrutura do Projeto
+## Project Structure
 
 ```
-├── manifest.json                 # Manifesto MV3 da extensão
-├── inject.js                     # Content script — injeta o VAFT na página
-├── watchdog.js                   # Content script — monitora playback e recupera travamentos
-├── popup.html                    # Interface do popup
-├── popup.css                     # Estilos do popup (dark theme estilo Twitch)
-├── popup.js                      # Lógica do popup com atualizações em tempo real
-├── icons/                        # Ícones da extensão (16, 48, 128px)
+├── manifest.json                 # MV3 extension manifest
+├── inject.js                     # Content script — injects VAFT into the page
+├── watchdog.js                   # Content script — monitors playback and recovers stalls
+├── popup.html                    # Popup interface
+├── popup.css                     # Popup styles (Twitch-inspired dark theme)
+├── popup.js                      # Popup logic with real-time status updates
+├── icons/                        # Extension icons (16, 48, 128px)
 └── injected/
-    ├── vaft.js                   # Motor VAFT — intercepta Worker, fetch, M3U8
-    ├── conflict-detector.js      # Detecta outros adblockers ativos
-    └── upstream.txt              # Metadados da versão upstream do VAFT
+    ├── vaft.js                   # VAFT engine — intercepts Worker, fetch, M3U8
+    ├── conflict-detector.js      # Detects other active ad blockers
+    └── upstream.txt              # Upstream VAFT version metadata
 ```
 
 ---
@@ -93,14 +93,14 @@ Ao carregar uma tab da Twitch, a extensão verifica se outro adblocker (userscri
 <tr>
 <td width="260">
 
-O popup usa tema escuro inspirado na Twitch com toggle switches customizados.
+The popup uses a Twitch-inspired dark theme with custom toggle switches.
 
-- **Ad Blocking** — liga/desliga o bloqueio
-- **Watchdog Recovery** — liga/desliga a recuperação automática de travamentos
-- **Conflict Check** — mostra se há conflito com outros adblockers
-- **Reload Twitch Tab** — recarrega a tab ativa da Twitch
+- **Ad Blocking** — enable/disable ad blocking
+- **Watchdog Recovery** — enable/disable automatic stall recovery
+- **Conflict Check** — shows whether another ad blocker is conflicting
+- **Reload Twitch Tab** — reloads the active Twitch tab
 
-Os status atualizam em tempo real via `storage.onChanged`.
+All status indicators update in real time via `storage.onChanged`.
 
 </td>
 </tr>
@@ -108,44 +108,44 @@ Os status atualizam em tempo real via `storage.onChanged`.
 
 ---
 
-## Fluxo Resumido
+## Flow Overview
 
 ```
-Tab Twitch carrega
+Twitch tab loads
   └─ inject.js (document_start)
-      ├─ Checa storage: enabled?
-      ├─ Roda conflict-detector.js
-      └─ Injeta vaft.js na página
-          └─ Hooka Worker, fetch, visibilityState, localStorage
-              └─ Twitch cria o Worker → VAFT intercepta, injeta código no blob
-                  └─ Worker faz fetch de .m3u8
-                      ├─ Sem ad? → passa direto
-                      └─ Tem ad? → Usa backup stream pre-warmed
-                          ├─ Stream limpo? → Usa ele (resolução original)
-                          ├─ Ainda tem ad? → Tenta próximo tipo
-                          └─ Nenhum limpo? → Strip + loop do último segmento real
+      ├─ Check storage: enabled?
+      ├─ Run conflict-detector.js
+      └─ Inject vaft.js into page
+          └─ Hook Worker, fetch, visibilityState, localStorage
+              └─ Twitch creates Worker → VAFT intercepts, injects code into blob
+                  └─ Worker fetches .m3u8
+                      ├─ No ad? → Pass through
+                      └─ Has ad? → Use pre-warmed backup stream
+                          ├─ Clean stream? → Use it (source resolution)
+                          ├─ Still has ads? → Try next player type
+                          └─ None clean? → Strip + loop last real segment
 
-  └─ watchdog.js (paralelo)
-      └─ Monitora video.currentTime a cada 2s
-          ├─ Travou 15s? → pause/play
-          └─ Travou de novo? → reload tab
+  └─ watchdog.js (parallel)
+      └─ Monitor video.currentTime every 2s
+          ├─ Stalled 15s? → pause/play
+          └─ Stalled again? → reload tab
 ```
 
 ---
 
-## Créditos
+## Credits
 
-O motor de ad blocking é baseado no [VAFT (Video Ad-Free Twitch)](https://github.com/pixeltris/TwitchAdSolutions) por **pixeltris**, com as seguintes melhorias:
+The ad blocking engine is based on [VAFT (Video Ad-Free Twitch)](https://github.com/pixeltris/TwitchAdSolutions) by **pixeltris**, with the following improvements:
 
-- Pre-warming de backup streams para troca instantânea
-- Looping de último segmento real no lugar de tela preta
-- Remoção do player type `autoplay` (360p) do rotation de backup
-- Correção de null crash no `getServerTimeFromM3u8`
-- Watchdog com reset de recovery por canal
-- Popup com dark theme e atualizações em tempo real
+- Backup stream pre-warming for instant ad-free switching
+- Real segment looping instead of black screen during ad stripping
+- Removed `autoplay` player type (360p) from the backup rotation
+- Null crash fix in `getServerTimeFromM3u8`
+- Watchdog with per-channel recovery reset
+- Dark-themed popup with real-time status updates
 
 ---
 
-## Licença
+## License
 
-Este projeto é distribuído para uso pessoal e educacional. O motor VAFT é mantido por [pixeltris](https://github.com/pixeltris/TwitchAdSolutions).
+This project is distributed for personal and educational use. The VAFT engine is maintained by [pixeltris](https://github.com/pixeltris/TwitchAdSolutions).
