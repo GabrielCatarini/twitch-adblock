@@ -805,7 +805,12 @@
         playerBufferState.isLive = isLive;
         setTimeout(monitorPlayerBuffering, PlayerBufferingDelay);
     }
+    let _lastBannerAdState = false;
     function updateAdblockBanner(data) {
+        if (data.hasAds && !_lastBannerAdState) {
+            window.postMessage({ source: 'twitchadsblocker-ad-blocked' }, '*');
+        }
+        _lastBannerAdState = !!data.hasAds;
         const playerRootDiv = document.querySelector('.video-player');
         if (playerRootDiv != null) {
             let adBlockDiv = null;

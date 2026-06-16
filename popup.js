@@ -8,6 +8,7 @@
   const conflictText = document.getElementById("conflictText");
   const watchdogText = document.getElementById("watchdogText");
   const reloadBtn = document.getElementById("reloadBtn");
+  const adsBlockedCount = document.getElementById("adsBlockedCount");
 
   const storageGet = (defaults) =>
     new Promise((resolve, reject) => {
@@ -181,6 +182,16 @@
     watchdogText.classList.add("ok");
   };
 
+  const updateAdsBlocked = (count) => {
+    const n = Number(count) || 0;
+    const prev = adsBlockedCount.textContent;
+    adsBlockedCount.textContent = n.toLocaleString();
+    if (prev !== "0" && prev !== adsBlockedCount.textContent) {
+      adsBlockedCount.classList.add("bump");
+      setTimeout(() => adsBlockedCount.classList.remove("bump"), 200);
+    }
+  };
+
   const loadEngineVersion = async () => {
     try {
       const response = await fetch(api.runtime.getURL("injected/upstream.txt"));
@@ -228,13 +239,15 @@
       enabled: true,
       watchdogEnabled: true,
       conflictInfo: null,
-      watchdogInfo: null
+      watchdogInfo: null,
+      adsBlocked: 0
     });
     const enabled = current.enabled !== false;
     const watchdogEnabled = current.watchdogEnabled !== false;
     enabledToggle.checked = enabled;
     watchdogToggle.checked = watchdogEnabled;
     updateStateText(enabled);
+    updateAdsBlocked(current.adsBlocked);
     updateConflictText(current.conflictInfo);
     updateWatchdogText(watchdogEnabled, current.watchdogInfo);
     await loadEngineVersion();
@@ -285,6 +298,9 @@
       if (changes.conflictInfo) {
         updateConflictText(changes.conflictInfo.newValue);
       }
+      if (changes.adsBlocked) {
+        updateAdsBlocked(changes.adsBlocked.newValue);
+      }
     });
   }
 
@@ -292,6 +308,7 @@
     enabledToggle.checked = true;
     updateStateText(true);
     engineVersion.textContent = "Engine: unknown";
+    updateAdsBlocked(0);
     updateConflictText(null);
     watchdogToggle.checked = true;
     updateWatchdogText(true, null);

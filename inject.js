@@ -111,6 +111,27 @@
       (document.head || document.documentElement).appendChild(detectorScript);
     });
 
+  window.addEventListener("message", (event) => {
+    if (
+      event.source !== window ||
+      !event.data ||
+      event.data.source !== "twitchadsblocker-ad-blocked"
+    ) {
+      return;
+    }
+    try {
+      const maybePromise = api.storage.local.get({ adsBlocked: 0 }, (items) => {
+        if (api.runtime?.lastError) return;
+        api.storage.local.set({ adsBlocked: (items.adsBlocked || 0) + 1 });
+      });
+      if (maybePromise && typeof maybePromise.then === "function") {
+        maybePromise.then((items) => {
+          api.storage.local.set({ adsBlocked: (items.adsBlocked || 0) + 1 });
+        });
+      }
+    } catch {}
+  });
+
   Promise.all([getEnabled(), runConflictDetection()]).then(([enabled, conflictInfo]) => {
     storageSet({ [conflictStorageKey]: conflictInfo });
     if (enabled) {
