@@ -125,6 +125,10 @@
                     ${declareOptions.toString()}
                     ${getAccessToken.toString()}
                     ${gqlRequest.toString()}
+                    ${randomDeviceId.toString()}
+                    ${gqlRequestWithDeviceId.toString()}
+                    ${tryCleanToken.toString()}
+                    ${bruteForceCleanToken.toString()}
                     ${preWarmBackupStreams.toString()}
                     ${parseAttributes.toString()}
                     ${getWasmWorkerJs.toString()}
@@ -342,6 +346,16 @@
                                         }
                                     }
                                     preWarmBackupStreams(streamInfo, realFetch);
+                                    streamInfo._bruteForceResult = null;
+                                    bruteForceCleanToken(streamInfo, realFetch).then(function(result) {
+                                        if (result) {
+                                            streamInfo._bruteForceResult = result;
+                                            console.log('[VAFT-diag] Brute force SUCCESS — clean token found (device:' + result.deviceId.substring(0,8) + '... type:' + result.playerType + ')');
+                                        } else {
+                                            streamInfo._bruteForceResult = false;
+                                            console.log('[VAFT-diag] Brute force exhausted — no clean token found');
+                                        }
+                                    });
                                     streamInfo._preWarmInterval = setInterval(function() {
                                         for (let pi = 0; pi < BackupPlayerTypes.length; pi++) {
                                             streamInfo.BackupEncodingsM3U8Cache[BackupPlayerTypes[pi]] = null;
@@ -476,9 +490,30 @@
         if (haveAdTags) {
             streamInfo.IsMidroll = textStr.includes('"MIDROLL"') || textStr.includes('"midroll"');
             if (!streamInfo._hasRealContent && !streamInfo.IsMidroll) {
+                if (streamInfo._bruteForceResult && streamInfo._bruteForceResult.masterM3u8) {
+                    const currentRes = streamInfo.Urls[url];
+                    if (currentRes) {
+                        try {
+                            const cleanSegUrl = getStreamUrlForResolution(streamInfo._bruteForceResult.masterM3u8, currentRes);
+                            if (cleanSegUrl) {
+                                const cleanResp = await realFetch(cleanSegUrl);
+                                if (cleanResp.status === 200) {
+                                    const cleanM3u8 = await cleanResp.text();
+                                    if (!cleanM3u8.includes(AdSignifier)) {
+                                        console.log('[VAFT-diag] Brute force ACTIVE — preroll bypassed via clean token');
+                                        streamInfo._hasRealContent = true;
+                                        streamInfo.BackupEncodingsM3U8Cache['embed'] = streamInfo._bruteForceResult.masterM3u8;
+                                        return cleanM3u8;
+                                    }
+                                }
+                            }
+                        } catch(e) {}
+                    }
+                    streamInfo._bruteForceResult = null;
+                }
                 if (!streamInfo._prerollLogged) {
                     streamInfo._prerollLogged = true;
-                    console.log('[VAFT-diag] Preroll on fresh stream — passing through natively (midrolls will be blocked)');
+                    console.log('[VAFT-diag] Preroll — brute force ' + (streamInfo._bruteForceResult === false ? 'found nothing' : 'still searching') + ', passing through');
                 }
                 return textStr;
             }
@@ -718,6 +753,94 @@
                 key: 'FetchRequest',
                 value: fetchRequest
             });
+        });
+    }
+    function randomDeviceId() {
+        const c = 'abcdefghijklmnopqrstuvwxyz0123456789';
+        let id = '';
+        for (let i = 0; i < 32; i++) id += c.charAt(Math.floor(Math.random() * c.length));
+        return id;
+    }
+    function gqlRequestWithDeviceId(body, deviceId) {
+        let headers = {
+            'Client-ID': ClientID,
+            'X-Device-Id': deviceId,
+            'Authorization': AuthorizationHeader,
+            ...(ClientIntegrityHeader && {'Client-Integrity': ClientIntegrityHeader}),
+            ...(ClientVersion && {'Client-Version': ClientVersion}),
+            ...(ClientSession && {'Client-Session-Id': ClientSession})
+        };
+        return new Promise((resolve, reject) => {
+            const requestId = Math.random().toString(36).substring(2, 15);
+            pendingFetchRequests.set(requestId, { resolve, reject });
+            postMessage({ key: 'FetchRequest', value: {
+                id: requestId,
+                url: 'https://gql.twitch.tv/gql',
+                options: { method: 'POST', body: JSON.stringify(body), headers }
+            }});
+        });
+    }
+    async function tryCleanToken(streamInfo, playerType, deviceId, realFetch) {
+        try {
+            const body = {
+                operationName: 'PlaybackAccessToken',
+                variables: { isLive: true, login: streamInfo.ChannelName, isVod: false, vodID: '', playerType: playerType, platform: playerType === 'autoplay' ? 'android' : 'web' },
+                extensions: { persistedQuery: { version: 1, sha256Hash: 'ed230aa1e33e07eebb8928504583da78a5173989fadfb1ac94be06a04f3cdbe9' } }
+            };
+            const tokenResp = await gqlRequestWithDeviceId(body, deviceId);
+            if (tokenResp.status !== 200) return null;
+            const token = await tokenResp.json();
+            const usherUrl = new URL('https://usher.ttvnw.net/api/' + (V2API ? 'v2/' : '') + 'channel/hls/' + streamInfo.ChannelName + '.m3u8' + streamInfo.UsherParams);
+            usherUrl.searchParams.set('sig', token.data.streamPlaybackAccessToken.signature);
+            usherUrl.searchParams.set('token', token.data.streamPlaybackAccessToken.value);
+            const masterResp = await realFetch(usherUrl.href);
+            if (masterResp.status !== 200) return null;
+            const masterM3u8 = await masterResp.text();
+            const lines = masterM3u8.replaceAll('\r', '').split('\n');
+            let segUrl = null;
+            for (let i = 0; i < lines.length - 1; i++) {
+                if (lines[i].startsWith('#EXT-X-STREAM-INF') && lines[i + 1].includes('.m3u8')) {
+                    segUrl = lines[i + 1].trim();
+                    break;
+                }
+            }
+            if (!segUrl) return null;
+            const segResp = await realFetch(segUrl);
+            if (segResp.status !== 200) return null;
+            const segM3u8 = await segResp.text();
+            if (!segM3u8.includes(AdSignifier)) {
+                return { masterM3u8: masterM3u8, deviceId: deviceId, playerType: playerType, clean: true };
+            }
+            return null;
+        } catch (e) { return null; }
+    }
+    function bruteForceCleanToken(streamInfo, realFetch) {
+        const playerTypes = ['embed', 'popout', 'autoplay'];
+        const attempts = [];
+        for (let d = 0; d < 4; d++) {
+            const did = randomDeviceId();
+            for (let p = 0; p < playerTypes.length; p++) {
+                attempts.push(tryCleanToken(streamInfo, playerTypes[p], did, realFetch));
+            }
+        }
+        console.log('[VAFT-diag] Brute force: firing ' + attempts.length + ' parallel token attempts');
+        return new Promise(function(resolve) {
+            var done = false;
+            var finished = 0;
+            var total = attempts.length;
+            for (var i = 0; i < total; i++) {
+                attempts[i].then(function(result) {
+                    finished++;
+                    if (!done && result && result.clean) {
+                        done = true;
+                        resolve(result);
+                    }
+                    if (finished >= total && !done) resolve(null);
+                })['catch'](function() {
+                    finished++;
+                    if (finished >= total && !done) resolve(null);
+                });
+            }
         });
     }
     async function preWarmBackupStreams(streamInfo, realFetch) {
