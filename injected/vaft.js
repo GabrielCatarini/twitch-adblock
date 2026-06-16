@@ -13,6 +13,7 @@
         scope.BackupPlayerTypes = [
             'embed',//Source
             'popout',//Source
+            'autoplay',//Emergency fallback (low res, only used when embed+popout both have ads)
         ];
         scope.FallbackPlayerType = 'embed';
         scope.ForceAccessTokenPlayerType = 'popout';
@@ -348,7 +349,9 @@
                                             streamInfo.ModifiedM3U8 = lines.join('\n');
                                         }
                                     }
-                                    preWarmBackupStreams(streamInfo, realFetch);
+                                    setTimeout(function() {
+                                        preWarmBackupStreams(streamInfo, realFetch);
+                                    }, 5000);
                                     streamInfo._preWarmInterval = setInterval(function() {
                                         for (let pi = 0; pi < BackupPlayerTypes.length; pi++) {
                                             streamInfo.BackupEncodingsM3U8Cache[BackupPlayerTypes[pi]] = null;
@@ -484,6 +487,7 @@
             streamInfo.IsMidroll = textStr.includes('"MIDROLL"') || textStr.includes('"midroll"');
             if (!streamInfo.IsShowingAd) {
                 streamInfo.IsShowingAd = true;
+                console.log('[VAFT-diag] Ad detected (' + (streamInfo.IsMidroll ? 'midroll' : 'preroll') + ') on ' + streamInfo.ChannelName + ' | backup cache: ' + BackupPlayerTypes.map(function(t) { return t + ':' + !!streamInfo.BackupEncodingsM3U8Cache[t]; }).join(', '));
                 postMessage({
                     key: 'UpdateAdBlockBanner',
                     isMidroll: streamInfo.IsMidroll,
@@ -584,13 +588,17 @@
             if (!backupM3u8 && fallbackM3u8) {
                 backupPlayerType = FallbackPlayerType;
                 backupM3u8 = fallbackM3u8;
+                console.log('[VAFT-diag] No ad-free backup found, using fallback (' + FallbackPlayerType + ') + stripping');
             }
             if (backupM3u8) {
                 textStr = backupM3u8;
                 if (streamInfo.ActiveBackupPlayerType != backupPlayerType) {
                     streamInfo.ActiveBackupPlayerType = backupPlayerType;
-                    console.log(`Blocking${(streamInfo.IsMidroll ? ' midroll ' : ' ')}ads (${backupPlayerType})`);
+                    const hasAdsInBackup = backupM3u8.includes(AdSignifier);
+                    console.log('[VAFT-diag] Blocking' + (streamInfo.IsMidroll ? ' midroll ' : ' ') + 'ads via ' + backupPlayerType + (hasAdsInBackup ? ' (has ads, will strip)' : ' (clean)'));
                 }
+            } else {
+                console.log('[VAFT-diag] WARNING: No backup stream available, ads may leak!');
             }
             // TODO: Improve hevc stripping. It should always strip when there is a codec mismatch (both ways)
             const stripHevc = isHevc && streamInfo.ModifiedM3U8;
@@ -696,10 +704,14 @@
     }
     async function preWarmBackupStreams(streamInfo, realFetch) {
         if (!streamInfo || !streamInfo.ChannelName || !streamInfo.UsherParams) return;
+        console.log('[VAFT-diag] Pre-warming backups for ' + streamInfo.ChannelName + ' (auth:' + !!AuthorizationHeader + ' integrity:' + !!ClientIntegrityHeader + ' deviceId:' + !!GQLDeviceID + ')');
         for (let i = 0; i < BackupPlayerTypes.length; i++) {
             const playerType = BackupPlayerTypes[i];
             const realPlayerType = playerType.replace('-CACHED', '');
-            if (streamInfo.BackupEncodingsM3U8Cache[playerType]) continue;
+            if (streamInfo.BackupEncodingsM3U8Cache[playerType]) {
+                console.log('[VAFT-diag] Pre-warm ' + playerType + ': already cached');
+                continue;
+            }
             try {
                 const tokenResponse = await getAccessToken(streamInfo.ChannelName, realPlayerType);
                 if (tokenResponse.status === 200) {
@@ -710,9 +722,16 @@
                     const response = await realFetch(urlInfo.href);
                     if (response.status === 200) {
                         streamInfo.BackupEncodingsM3U8Cache[playerType] = await response.text();
+                        console.log('[VAFT-diag] Pre-warm ' + playerType + ': OK');
+                    } else {
+                        console.log('[VAFT-diag] Pre-warm ' + playerType + ': playlist fetch failed (' + response.status + ')');
                     }
+                } else {
+                    console.log('[VAFT-diag] Pre-warm ' + playerType + ': token fetch failed (' + tokenResponse.status + ')');
                 }
-            } catch (err) {}
+            } catch (err) {
+                console.log('[VAFT-diag] Pre-warm ' + playerType + ': error ' + err);
+            }
         }
     }
     let playerForMonitoringBuffering = null;
