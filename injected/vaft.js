@@ -349,9 +349,7 @@
                                             streamInfo.ModifiedM3U8 = lines.join('\n');
                                         }
                                     }
-                                    setTimeout(function() {
-                                        preWarmBackupStreams(streamInfo, realFetch);
-                                    }, 5000);
+                                    preWarmBackupStreams(streamInfo, realFetch);
                                     streamInfo._preWarmInterval = setInterval(function() {
                                         for (let pi = 0; pi < BackupPlayerTypes.length; pi++) {
                                             streamInfo.BackupEncodingsM3U8Cache[BackupPlayerTypes[pi]] = null;
@@ -522,6 +520,24 @@
                 postMessage({
                     key: 'ReloadPlayer'
                 });
+            }
+            const hasWarmCache = BackupPlayerTypes.some(function(t) { return !!streamInfo.BackupEncodingsM3U8Cache[t]; });
+            if (!streamInfo.IsMidroll && !hasWarmCache && !streamInfo._prerollReloadDone && Date.now() - streamInfo.LastPlayerReload > PlayerReloadMinimalRequestsTime) {
+                console.log('[VAFT-diag] Preroll with empty backup cache — reloading player to skip');
+                streamInfo._prerollReloadDone = true;
+                streamInfo.IsShowingAd = false;
+                streamInfo.LastPlayerReload = Date.now();
+                postMessage({ key: 'ReloadPlayer' });
+                if (IsAdStrippingEnabled) {
+                    textStr = stripAdSegments(textStr, false, streamInfo);
+                }
+                postMessage({
+                    key: 'UpdateAdBlockBanner',
+                    isMidroll: false,
+                    hasAds: false,
+                    isStrippingAdSegments: false
+                });
+                return textStr;
             }
             let backupPlayerType = null;
             let backupM3u8 = null;
